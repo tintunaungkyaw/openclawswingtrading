@@ -1,0 +1,52 @@
+# OpenClaw Swing Trading Bot — Configuration
+
+scan_time: "16:30"          # US Eastern Time (after market close, Mon-Fri)
+stock_universe_size: 50     # Top N tech stocks to scan via screener
+cache_expiry_hours: 23      # OHLCV data cache TTL (refreshes daily)
+signal_cooldown_hours: 72   # Prevent re-alerting same ticker+signal within 3 days
+log_level: INFO
+log_file: logs/openclaw.log
+
+signals:
+  breakout:
+    enabled: true
+    volume_ratio_min: 1.5       # Volume must be 150%+ of 20-day avg
+    rsi_min: 55
+    rsi_max: 75
+    lookback_days: 20
+    consolidation_range_pct: 8.0  # Prior 10-day range must be < 8%
+
+  trend_pullback:
+    enabled: true
+    rsi_min: 35
+    rsi_max: 55
+    pullback_to_sma_pct: 3.0    # Must be within 3% of 20-day SMA
+
+  momentum_continuation:
+    enabled: true
+    rsi_min: 60
+    rsi_max: 80
+
+  volume_expansion:
+    enabled: true
+    volume_ratio_min: 2.0       # Volume must be 200%+ of 20-day avg
+
+  relative_strength:
+    enabled: true
+    benchmark: "XLK"
+    min_outperformance_pct: 5.0
+    lookback_days: 20
+
+filters:
+  min_price: 15.0             # Skip stocks below $15 (avoid illiquid names)
+  min_market_cap_b: 100.0     # Minimum market cap in billions ($100B = mega-cap only)
+  min_avg_volume: 1000000     # Minimum 20-day average daily volume (1M shares)
+  market_cap_cache_days: 7    # Refresh market cap data every 7 days
+
+telegram:
+  chat_id: ""                 # Override via TELEGRAM_CHAT_ID env var
+  rate_limit_seconds: 2       # Delay between successive messages
+
+risk:
+  risk_reward_ratio: 2.0      # Minimum R:R for all signals
+  atr_stop_multiplier: 1.5    # Stop = entry - (ATR * multiplier)
