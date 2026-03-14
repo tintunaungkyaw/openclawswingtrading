@@ -9,8 +9,10 @@ from core.strategy_engine import evaluate_signals
 from core.signal_model import TradingSignal
 from core.market_regime import detect_regime, MarketRegime
 from core.earnings_filter import is_near_earnings
+from core.earnings_tracker import get_upcoming_earnings, get_recent_results
 from core.performance_tracker import PerformanceTracker
 from core.sector_classifier import classify
+from core.narrative import generate_narrative
 from integration.telegram_notifier import TelegramNotifier
 
 # Minimum number of reasons required to send a signal in CAUTION market
@@ -64,6 +66,22 @@ class Scanner:
         universe = self.dp.get_stock_universe()
         logger.info(f"Universe: {len(universe)} stocks")
 
+        # ── Earnings previews ──────────────────────────────────────────────
+        for p in get_upcoming_earnings(universe):
+            key = f"EarningsPreview_{p['earnings_date']}"
+            if not self.cache.is_duplicate(p["ticker"], key, 24):
+                self.notifier.send_earnings_preview(p)
+                self.cache.record_signal(p["ticker"], key)
+                logger.info(f"Earnings preview sent: {p['ticker']} on {p['earnings_date']}")
+
+        # ── Earnings results ───────────────────────────────────────────────
+        for r in get_recent_results(universe):
+            key = f"EarningsResult_{r['earnings_date']}"
+            if not self.cache.is_duplicate(r["ticker"], key, 24):
+                self.notifier.send_earnings_result(r)
+                self.cache.record_signal(r["ticker"], key)
+                logger.info(f"Earnings result sent: {r['ticker']} — {r['assessment']}")
+
         cooldown = self.config.get("signal_cooldown_hours", 72)
         signals_sent = 0
 
@@ -96,6 +114,7 @@ class Scanner:
 
                     # AI / Semiconductor classification
                     signal.ai_exposure, signal.ai_category = classify(ticker)
+                    signal.narrative = generate_narrative(signal)
 
                     # Send and record
                     self.notifier.send_signal(signal)

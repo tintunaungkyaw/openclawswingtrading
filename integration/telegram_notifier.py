@@ -6,7 +6,7 @@ Bot API (HTTP, no python-telegram-bot dependency).
 """
 from __future__ import annotations
 import time
-from datetime import datetime
+from datetime import date, datetime
 
 import pytz
 import requests
@@ -66,6 +66,14 @@ class TelegramNotifier:
 
     def send_signal(self, signal: TradingSignal):
         self._post(_format_signal(signal))
+        time.sleep(self.rate_limit)
+
+    def send_earnings_preview(self, data: dict):
+        self._post(_format_earnings_preview(data))
+        time.sleep(self.rate_limit)
+
+    def send_earnings_result(self, data: dict):
+        self._post(_format_earnings_result(data))
         time.sleep(self.rate_limit)
 
     def send_text(self, text: str):
@@ -151,6 +159,13 @@ def _format_signal(s: TradingSignal) -> str:
     else:
         ai_block = ""
 
+    # ── Analyst narrative ────────────────────────────────────────────────────
+    narrative_block = (
+        f"\n{_THIN}\n"
+        f"💡  <b>ANALYST VIEW</b>\n"
+        f"    <i>{s.narrative}</i>"
+    ) if s.narrative else ""
+
     # ── Reasons ─────────────────────────────────────────────────────────────
     reasons_text = "\n".join(f"  ◆ {r}" for r in s.reasons)
 
@@ -169,7 +184,8 @@ def _format_signal(s: TradingSignal) -> str:
         f"<b>Ticker</b>   ${s.ticker}\n"
         f"<b>Price</b>    ${s.price:.2f}\n"
         f"<i>{tagline}</i>"
-        f"{ai_block}\n"
+        f"{ai_block}"
+        f"{narrative_block}\n"
         f"\n"
         # ═══ TRADE SETUP ═══
         f"{_DIV}\n"
@@ -202,5 +218,115 @@ def _format_signal(s: TradingSignal) -> str:
         # ═══ FOOTER ═══
         f"{_DIV}\n"
         f"⏰  {ts}  ·  <i>Not financial advice</i>\n"
+        f"{_DIV}"
+    )
+
+
+# ── Earnings formatters ────────────────────────────────────────────────────────
+
+def _fmt_revenue(v: float) -> str:
+    if v >= 1e12:
+        return f"${v / 1e12:.2f}T"
+    if v >= 1e9:
+        return f"${v / 1e9:.1f}B"
+    if v >= 1e6:
+        return f"${v / 1e6:.0f}M"
+    return f"${v:,.0f}"
+
+
+def _format_earnings_preview(data: dict) -> str:
+    ticker    = data["ticker"]
+    edate     = data["earnings_date"]          # date object
+    eps_est   = data.get("eps_estimate")
+    rev_est   = data.get("revenue_estimate")
+
+    today     = date.today()
+    days_away = (edate - today).days
+    if days_away == 0:
+        day_label = "today"
+    elif days_away == 1:
+        day_label = "tomorrow"
+    else:
+        day_label = f"in {days_away} days"
+
+    date_str = edate.strftime("%a %b %-d")
+    ts       = datetime.now(_ET).strftime("%a %b %-d · %I:%M %p ET")
+
+    # Estimates block (omit if both are None)
+    estimates_block = ""
+    if eps_est is not None or rev_est is not None:
+        lines = []
+        if eps_est is not None:
+            lines.append(f"  EPS      ${eps_est:.2f}")
+        if rev_est is not None:
+            lines.append(f"  Revenue  {_fmt_revenue(rev_est)}")
+        estimates_block = (
+            f"\n{_THIN}\n"
+            f"📊  <b>CONSENSUS ESTIMATES</b>\n"
+            f"\n"
+            + "\n".join(lines)
+            + "\n"
+        )
+
+    return (
+        f"{_DIV}\n"
+        f"📅  <b>EARNINGS PREVIEW</b>\n"
+        f"{_DIV}\n"
+        f"\n"
+        f"<b>Ticker</b>   ${ticker}\n"
+        f"<b>Reports</b>  {date_str}  ({day_label})\n"
+        f"{estimates_block}"
+        f"\n"
+        f"{_DIV}\n"
+        f"⏰  {ts}\n"
+        f"{_DIV}"
+    )
+
+
+def _format_earnings_result(data: dict) -> str:
+    ticker      = data["ticker"]
+    edate       = data["earnings_date"]        # date object
+    eps_actual  = data.get("eps_actual")
+    eps_est     = data.get("eps_estimate")
+    surprise    = data.get("surprise_pct")
+    assessment  = data.get("assessment", "NEUTRAL")
+
+    badge_map = {
+        "BULLISH": ("🟢 BULLISH", "✅ BEAT"),
+        "BEARISH": ("🔴 BEARISH", "❌ MISS"),
+        "NEUTRAL": ("⚪ NEUTRAL", "➖ IN-LINE"),
+    }
+    header_badge, surp_badge = badge_map.get(assessment, ("⚪ NEUTRAL", "➖ IN-LINE"))
+
+    date_str = edate.strftime("%a %b %-d")
+    ts       = datetime.now(_ET).strftime("%a %b %-d · %I:%M %p ET")
+
+    actual_str   = f"${eps_actual:.2f}"  if eps_actual  is not None else "N/A"
+    est_str      = f"${eps_est:.2f}"     if eps_est     is not None else "N/A"
+    surp_str     = (f"{surprise:+.1f}%" if surprise is not None else "N/A")
+
+    eps_pre = (
+        "<pre>"
+        f"Actual    {actual_str}\n"
+        f"Estimate  {est_str}\n"
+        f"Surprise  {surp_str}  {surp_badge}"
+        "</pre>"
+    )
+
+    return (
+        f"{_DIV}\n"
+        f"📊  <b>EARNINGS RESULT</b>  {header_badge}\n"
+        f"{_DIV}\n"
+        f"\n"
+        f"<b>Ticker</b>    ${ticker}\n"
+        f"<b>Reported</b>  {date_str}\n"
+        f"\n"
+        f"{_THIN}\n"
+        f"📋  <b>EPS</b>\n"
+        f"\n"
+        f"{eps_pre}\n"
+        f"\n"
+        f"{_DIV}\n"
+        f"⏰  {ts}\n"
         f"{_DIV}"
     )

@@ -26,4 +26,5 @@ class TradingSignal:
     # AI / Semiconductor classification (populated by sector_classifier)
     ai_exposure: str = "NO"     # "YES" or "NO"
     ai_category: str = ""       # e.g. "AI Networking Infrastructure"
+    narrative: str = ""         # GPT-generated trade thesis
     generated_at: datetime = field(default_factory=datetime.utcnow)
